@@ -6,6 +6,13 @@ variable "backup_bucket_name" {
 resource "aws_s3_bucket" "cloudvote_backups" {
   bucket = var.backup_bucket_name
 
+  # Prevents Terraform from ever destroying this bucket, even via
+  # `terraform destroy` or accidental removal from this file.
+  # Must be manually removed from code before a deliberate teardown.
+  lifecycle {
+    prevent_destroy = true
+  }
+
   tags = {
     Name        = "cloudvote-${var.environment}-backups"
     Environment = var.environment
