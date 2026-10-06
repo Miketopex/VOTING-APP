@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Results{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('polls.index') }}" class="muted">← All polls</a></p>
+<div class="card" style="max-width:820px">
+  <p class="eyebrow"><span class="live-dot"></span>Live results {% if not r.is_open %}· poll closed{% endif %}</p>
+  <h1 style="margin-bottom:16px">{{ r.question }}</h1>
+
+  <div id="my-vote">
+  {% if status == 'recorded' %}
+    <div class="notice notice-ok">✅ Your vote for <strong>{{ recorded.label }}</strong> has been counted.</div>
+  {% elif status == 'pending' %}
+    <div class="notice notice-wait">⏳ Your vote is in the queue. This page updates automatically.</div>
+  {% elif r.is_open %}
+    <div class="notice notice-wait">You haven't voted yet. <a href="{{ url_for('polls.detail', poll_id=r.poll_id) }}">Vote now</a></div>
+  {% endif %}
+  </div>
+
+  <div class="bars" id="bars">
+    {% for o in r.options %}
+    <div class="bar-row {% if recorded and recorded.option_id == o.id %}mine{% endif %}" data-id="{{ o.id }}">
+      <div class="bar-label"><span>{{ o.label }}</span><span><span class="n">{{ o.votes }}</span> votes · <span class="p">{{ o.percent }}</span>%</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width: {{ o.percent }}%"></div></div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="meta-row">
+    <span>Total votes: <strong id="total">{{ r.total }}</strong></span>
+    <span>Served from: <strong id="source">{{ source }}</strong></span>
+    <span>Updated: <strong id="updated">{{ r.generated_at[11:19] }} UTC</strong></span>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  // Poll the JSON API every 3 s so the page shows new votes as the worker stores them.
+  const url = "{{ url_for('api.results', poll_id=r.poll_id) }}";
+  let lastStatus = "{{ status or '' }}";
+  async function refresh() {
+    try {
+      const res = await fetch(url, {credentials: "same-origin"});
+      if (!res.ok) return;
+      const body = await res.json();
+      const r = body.results;
+      document.getElementById("total").textContent = r.total;
+      document.getElementById("source").textContent = body.source;
+      document.getElementById("updated").textContent = r.generated_at.slice(11, 19) + " UTC";
+      for (const o of r.options) {
+        const row = document.querySelector('.bar-row[data-id="' + o.id + '"]');
+        if (!row) continue;
+        row.querySelector(".n").textContent = o.votes;
+        row.querySelector(".p").textContent = o.percent;
+        row.querySelector(".bar-fill").style.width = o.percent + "%";
+      }
+      if (lastStatus === "pending" && body.my_vote === "recorded") location.reload();
+      lastStatus = body.my_vote || "";
+    } catch (e) { /* network blip – try again next tick */ }
+  }
+  setInterval(refresh, 3000);
+</script>
+{% endblock %}
