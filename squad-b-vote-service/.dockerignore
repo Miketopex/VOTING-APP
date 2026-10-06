@@ -1,0 +1,12 @@
+tests/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.pyo
+instance/
+.env
+.env.*
+!.env.example
+requirements-dev.txt
+.flake8
+README.md
