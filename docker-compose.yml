@@ -1,0 +1,100 @@
+services:
+  vote-service:
+    build:
+      context: ./squad-b-vote-service
+    container_name: vote-service
+    environment:
+      DATABASE_URL: postgresql://voting:${POSTGRES_PASSWORD:-change-me}@postgres:5432/voting
+      REDIS_URL: redis://redis:6379/0
+      WORKER_HEALTH_URL: http://worker:8080/health
+      VOTE_QUEUE: votes
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "5000"
+    networks:
+      - app-network
+
+  worker:
+    build:
+      context: ./squad-c-worker-data
+    container_name: worker
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: voting
+      POSTGRES_USER: voting
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      VOTE_QUEUE: votes
+      HEALTH_PORT: 8080
+      WORKER_HEALTH_URL: http://worker:8080/health
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "8080"
+    networks:
+      - app-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: voting-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - app-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: voting-postgres
+    environment:
+      POSTGRES_DB: voting
+      POSTGRES_USER: voting
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U voting -d voting"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - app-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: voting-nginx
+    depends_on:
+      - vote-service
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./squad-d-devops/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./squad-d-devops/nginx/certs:/etc/nginx/certs:ro
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
