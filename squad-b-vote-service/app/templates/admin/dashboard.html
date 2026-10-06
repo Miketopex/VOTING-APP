@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block title %}Admin dashboard{% endblock %}
+
+{% block content %}
+<h1>Admin dashboard</h1>
+
+{# The pipeline strip is the reason this page exists: it answers "is the vote
+   pipeline actually working?" before you look at anything else. #}
+<section class="panel" aria-labelledby="pipeline-heading">
+  <h2 id="pipeline-heading">Vote pipeline</h2>
+
+  {% if not pipeline.redis_ok %}
+    <p class="flash flash-error">
+      Redis is unreachable, so the counters below are unavailable. Votes cannot be queued until it is back.
+    </p>
+  {% endif %}
+
+  <ul class="stat-row" id="pipeline-stats">
+    <li>
+      <span class="stat-value">{{ stats.votes_processed }}</span>
+      <span class="stat-label">Processed</span>
+    </li>
+    <li>
+      <span class="stat-value">{{ stats.votes_duplicate }}</span>
+      <span class="stat-label">Duplicates rejected</span>
+    </li>
+    <li>
+      <span class="stat-value">{{ stats.votes_failed }}</span>
+      <span class="stat-label">Failed</span>
+    </li>
+    <li>
+      <span class="stat-value">{{ pipeline.queue_depth if pipeline.queue_depth is not none else '—' }}</span>
+      <span class="stat-label">Waiting in queue</span>
+    </li>
+    <li>
+      <span class="stat-value">
+        {% if pipeline.worker_alive %}Alive
+        {% elif pipeline.worker_age is not none %}{{ pipeline.worker_age }}s ago
+        {% else %}Unknown{% endif %}
+      </span>
+      <span class="stat-label">Worker heartbeat</span>
+    </li>
+  </ul>
+
+  {% if pipeline.redis_ok and not pipeline.worker_alive %}
+    <p class="flash flash-error">
+      The worker has not checked in recently. Votes are still being accepted into the queue, but nothing is
+      counting them — results will stay frozen until it comes back.
+    </p>
+  {% endif %}
+</section>
+
+<section class="panel" aria-labelledby="new-poll-heading">
+  <h2 id="new-poll-heading">New poll</h2>
+  <form method="post" action="{{ url_for('admin.create_poll') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="question">Question</label>
+    <input id="question" name="question" maxlength="200" required
+           placeholder="Which deployment slot should we use on Friday?">
+
+    <fieldset>
+      <legend>Options (at least two)</legend>
+      {% for i in range(4) %}
+        <label class="sr-only" for="option-{{ i }}">Option {{ i + 1 }}</label>
+        <input id="option-{{ i }}" name="options" maxlength="100"
+               placeholder="Option {{ i + 1 }}{% if i > 1 %} (optional){% endif %}"
+               {% if i < 2 %}required{% endif %}>
+      {% endfor %}
+    </fieldset>
+
+    <button class="btn btn-primary" type="submit">Create poll</button>
+  </form>
+</section>
+
+<section class="panel" aria-labelledby="polls-heading">
+  <h2 id="polls-heading">Polls</h2>
+  {% if not polls %}
+    <p class="muted">No polls yet. Create the first one above.</p>
+  {% else %}
+    <table class="table">
+      <thead>
+        <tr><th scope="col">Question</th><th scope="col">Created</th><th scope="col">State</th><th scope="col"></th></tr>
+      </thead>
+      <tbody>
+        {% for poll in polls %}
+          <tr>
+            <td><a href="{{ url_for('polls.show', poll_id=poll.id) }}">{{ poll.question }}</a></td>
+            <td class="muted">{{ poll.created_at | dt }}</td>
+            <td>
+              <span class="pill pill-{{ 'open' if poll.is_open else 'closed' }}">
+                {{ 'Open' if poll.is_open else 'Closed' }}
+              </span>
+            </td>
+            <td>
+              <form method="post" action="{{ url_for('admin.set_state', poll_id=poll.id) }}" class="inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="state" value="{{ 'closed' if poll.is_open else 'open' }}">
+                <button class="btn btn-ghost btn-sm" type="submit">
+                  {{ 'Close' if poll.is_open else 'Reopen' }}
+                </button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Refresh the pipeline numbers without reloading the page.
+  // A 401 here means the session expired: the API answers with JSON (not a redirect
+  // to the login page), so we can say so plainly instead of failing silently.
+  const POLL_MS = 10000;
+
+  async function refreshStats() {
+    try {
+      const res = await fetch('{{ url_for('api.admin_stats') }}', { headers: { 'Accept': 'application/json' } });
+      if (res.status === 401 || res.status === 403) {
+        document.getElementById('pipeline-stats').dataset.error = 'Session expired — reload and sign in again.';
+        return;
+      }
+      if (!res.ok) return;
+      const data = await res.json();
+      const cells = document.querySelectorAll('#pipeline-stats .stat-value');
+      cells[0].textContent = data.stats.votes_processed;
+      cells[1].textContent = data.stats.votes_duplicate;
+      cells[2].textContent = data.stats.votes_failed;
+      cells[3].textContent = data.queue_depth ?? '—';
+      cells[4].textContent = data.worker.alive ? 'Alive'
+        : (data.worker.age_seconds !== null ? data.worker.age_seconds + 's ago' : 'Unknown');
+    } catch (err) {
+      // Network blip — leave the last known numbers on screen rather than blanking them.
+    }
+  }
+
+  setInterval(refreshStats, POLL_MS);
+</script>
+{% endblock %}
