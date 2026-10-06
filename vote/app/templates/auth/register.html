@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Create account{% endblock %}
+{% block content %}
+<div class="auth-card card">
+  <h1>Create your account</h1>
+  <p class="muted">You need an account so that everyone votes only once.</p>
+  <form method="post" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Username
+      <input class="input" name="username" value="{{ username or '' }}" required autofocus autocomplete="username"
+             pattern="[A-Za-z0-9_.\-]{3,40}">
+      <span class="hint">3–40 characters: letters, numbers, dot, dash or underscore.</span>
+    </label>
+    <label>Password
+      <input class="input" type="password" name="password" minlength="8" required autocomplete="new-password">
+      <span class="hint">At least 8 characters, with a letter and a number.</span>
+    </label>
+    <label>Confirm password
+      <input class="input" type="password" name="confirm" minlength="8" required autocomplete="new-password">
+    </label>
+    <button class="btn btn-primary btn-block" type="submit">Create account</button>
+  </form>
+  <p class="muted small">Already registered? <a href="{{ url_for('auth.login') }}">Sign in</a></p>
+</div>
+{% endblock %}
