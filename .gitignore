@@ -11,3 +11,7 @@ crash.*.log
 # Environment files
 .env
 node_modules/
+
+# TLS certificates and private keys
+squad-d-devops/nginx/certs/*
+!squad-d-devops/nginx/certs/.gitkeep
