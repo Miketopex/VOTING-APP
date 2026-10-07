@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Vote{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('polls.index') }}" class="muted">← All polls</a></p>
+<div class="card" style="max-width:720px">
+  <p class="eyebrow">{% if poll.is_open %}Open poll{% else %}Closed poll{% endif %}</p>
+  <h1 style="margin-bottom:16px">{{ poll.question }}</h1>
+
+  {% if status == 'recorded' %}
+    <div class="notice notice-ok">✅ You voted for <strong>{{ recorded.label }}</strong>. Each person can vote once.</div>
+    <a class="btn btn-primary" href="{{ url_for('polls.results', poll_id=poll.id) }}">See results</a>
+  {% elif status == 'pending' %}
+    <div class="notice notice-wait">⏳ Your vote is in the queue and will be counted in a moment.</div>
+    <a class="btn btn-primary" href="{{ url_for('polls.results', poll_id=poll.id) }}">Watch the results</a>
+  {% elif not poll.is_open %}
+    <div class="notice notice-wait">This poll is closed. You can still see the results.</div>
+    <a class="btn btn-primary" href="{{ url_for('polls.results', poll_id=poll.id) }}">See results</a>
+  {% else %}
+    <form method="post" action="{{ url_for('polls.vote', poll_id=poll.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="options">
+        {% for o in poll.options %}
+        <label class="option"><input type="radio" name="option_id" value="{{ o.id }}" required> {{ o.label }}</label>
+        {% endfor %}
+      </div>
+      <div class="form-actions" style="justify-content:space-between">
+        <span class="muted small">You can't change your vote once it is cast.</span>
+        <button class="btn btn-primary" type="submit">Cast my vote</button>
+      </div>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}
