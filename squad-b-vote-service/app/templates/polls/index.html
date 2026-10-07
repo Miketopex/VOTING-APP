@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Polls{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Polls</h1>
+    <p class="muted">You can vote once in each open poll.</p>
+  </div>
+  {% if g.user.is_admin %}<a class="btn btn-primary" href="{{ url_for('admin.new_poll') }}">+ New poll</a>{% endif %}
+</div>
+{% if polls %}
+<div class="poll-list">
+  {% for p in polls %}
+  <div class="card poll-card">
+    <div>
+      <h2>{{ p.question }}</h2>
+      <div class="muted small">
+        {% if p.is_open %}<span class="pill pill-open">Open</span>{% else %}<span class="pill pill-closed">Closed</span>{% endif %}
+        {% if p.my_status == 'recorded' %}<span class="pill pill-voted">You voted</span>
+        {% elif p.my_status == 'pending' %}<span class="pill pill-pending">Vote being counted</span>{% endif %}
+        · created {{ p.created_at|dt('%d %b %Y') }}
+      </div>
+    </div>
+    <div class="poll-actions">
+      {% if p.is_open and not p.my_status %}
+        <a class="btn btn-primary btn-sm" href="{{ url_for('polls.detail', poll_id=p.id) }}">Vote</a>
+      {% endif %}
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('polls.results', poll_id=p.id) }}">Results</a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty card"><div class="empty-icon">🗳️</div><h2>No polls yet</h2><p class="muted">An administrator needs to create one.</p></div>
+{% endif %}
+{% endblock %}

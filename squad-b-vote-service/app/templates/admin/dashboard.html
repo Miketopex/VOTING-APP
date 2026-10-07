@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}Admin dashboard{% endblock %}
+
+{% block content %}
+<h1>Admin dashboard</h1>
+
+{# This strip is the reason the page exists: is the vote pipeline actually working? #}
+<section class="panel" aria-labelledby="pipeline-heading">
+  <h2 id="pipeline-heading">Vote pipeline</h2>
+
+  {% if degraded %}
+    <p class="flash flash-error">
+      Redis is unreachable, so the counters below are unavailable. Votes cannot be queued until it is back.
+    </p>
+  {% else %}
+    <ul class="stat-row" id="pipeline-stats">
+      <li><span class="stat-value" data-stat="processed_total">{{ stats.processed_total }}</span>
+          <span class="stat-label">Processed</span></li>
+      <li><span class="stat-value" data-stat="duplicates">{{ stats.duplicates }}</span>
+          <span class="stat-label">Duplicates rejected</span></li>
+      <li><span class="stat-value" data-stat="queue_length">{{ stats.queue_length }}</span>
+          <span class="stat-label">Waiting in queue</span></li>
+      <li><span class="stat-value" data-stat="failed">{{ stats.failed }}</span>
+          <span class="stat-label">Dead-letter</span></li>
+      <li><span class="stat-value" data-stat="cache_hit_rate">{{ stats.cache_hit_rate }}%</span>
+          <span class="stat-label">Cache hit rate</span></li>
+    </ul>
+
+    {% if stats.failed %}
+      <p class="flash flash-error">
+        {{ stats.failed }} message{{ '' if stats.failed == 1 else 's' }} the worker could not process are
+        sitting in the dead-letter queue. Those votes have not been counted.
+      </p>
+    {% endif %}
+  {% endif %}
+</section>
+
+{% if not degraded %}
+<section class="panel" aria-labelledby="turnout-heading">
+  <h2 id="turnout-heading">Turnout</h2>
+  <ul class="stat-row">
+    <li><span class="stat-value">{{ stats.voters }}</span><span class="stat-label">People who voted</span></li>
+    <li><span class="stat-value">{{ stats.users }}</span><span class="stat-label">Registered users</span></li>
+    <li><span class="stat-value">{{ stats.participation }}%</span><span class="stat-label">Participation</span></li>
+    <li><span class="stat-value">{{ stats.total_votes }}</span><span class="stat-label">Votes recorded</span></li>
+  </ul>
+</section>
+{% endif %}
+
+<section class="panel" aria-labelledby="new-poll-heading">
+  <h2 id="new-poll-heading">New poll</h2>
+  <form method="post" action="{{ url_for('admin.create_poll') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="question">Question</label>
+    <input id="question" name="question" maxlength="200" required
+           placeholder="Which deployment slot should we use on Friday?">
+
+    <fieldset>
+      <legend>Options (at least two)</legend>
+      {% for i in range(4) %}
+        <input name="options" maxlength="100" aria-label="Option {{ i + 1 }}"
+               placeholder="Option {{ i + 1 }}{% if i > 1 %} (optional){% endif %}"
+               {% if i < 2 %}required{% endif %}>
+      {% endfor %}
+    </fieldset>
+
+    <button class="btn btn-primary" type="submit">Create poll</button>
+  </form>
+</section>
+
+<section class="panel" aria-labelledby="polls-heading">
+  <h2 id="polls-heading">Polls</h2>
+  {% if not polls %}
+    <p class="muted">No polls yet. Create the first one above.</p>
+  {% else %}
+    <table class="table">
+      <thead>
+        <tr><th scope="col">Question</th><th scope="col">Created</th>
+            <th scope="col">State</th><th scope="col"></th></tr>
+      </thead>
+      <tbody>
+        {% for poll in polls %}
+          <tr>
+            <td><a href="{{ url_for('polls.detail', poll_id=poll.id) }}">{{ poll.question }}</a></td>
+            <td class="muted">{{ poll.created_at | dt }}</td>
+            <td><span class="pill">{{ 'Open' if poll.is_open else 'Closed' }}</span></td>
+            <td>
+              <form method="post" action="{{ url_for('admin.toggle', poll_id=poll.id) }}" class="inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="btn btn-ghost btn-sm" type="submit">
+                  {{ 'Close' if poll.is_open else 'Reopen' }}
+                </button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Refresh the counters without reloading. A 401 here means the session expired:
+  // the API answers with JSON rather than redirecting to the login page, so we can
+  // say so plainly instead of choking on a half-parsed HTML form.
+  const STATS_URL = "{{ url_for('api.admin_stats') }}";
+
+  async function refreshStats() {
+    const row = document.getElementById('pipeline-stats');
+    if (!row) return;
+    try {
+      const res = await fetch(STATS_URL, { headers: { 'Accept': 'application/json' } });
+      if (res.status === 401 || res.status === 403) {
+        row.setAttribute('data-error', 'Session expired — reload and sign in again.');
+        return;
+      }
+      if (!res.ok) return;
+      const body = await res.json();
+      if (body.degraded) return;
+      for (const cell of row.querySelectorAll('[data-stat]')) {
+        const value = body.stats[cell.dataset.stat];
+        if (value !== undefined) {
+          cell.textContent = cell.dataset.stat === 'cache_hit_rate' ? value + '%' : value;
+        }
+      }
+    } catch (err) {
+      // Network blip — leave the last known numbers up rather than blanking them.
+    }
+  }
+
+  setInterval(refreshStats, 10000);
+</script>
+{% endblock %}

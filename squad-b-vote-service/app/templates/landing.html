@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Vote on what matters{% endblock %}
+{% block content %}
+<section class="hero">
+  <div>
+    <p class="eyebrow">Fair, fast, one person one vote</p>
+    <h1>Run polls your team can trust.</h1>
+    <p class="lead">Sign in, cast one vote per poll, and watch the results update live.
+      Votes are queued and counted by a background worker, so the site stays fast even when everyone votes at once.</p>
+    <div class="hero-actions">
+      <a class="btn btn-primary" href="{{ url_for('auth.register') }}">Create an account</a>
+      <a class="btn btn-ghost" href="{{ url_for('auth.login') }}">Sign in</a>
+    </div>
+  </div>
+  <div class="hero-card card">
+    <div class="feature"><span class="dot">🔐</span><div><strong>Accounts &amp; one vote each</strong><p>Every vote is tied to a login and can only be cast once.</p></div></div>
+    <div class="feature"><span class="dot">⚡</span><div><strong>Queued, never lost</strong><p>Votes go into a Redis queue and a Node.js worker stores them.</p></div></div>
+    <div class="feature"><span class="dot">📊</span><div><strong>Live results</strong><p>Results refresh every few seconds, served from a Redis cache.</p></div></div>
+    <div class="feature"><span class="dot">🛡️</span><div><strong>Admin dashboard</strong><p>Voting statistics, queue depth and the health of every service.</p></div></div>
+  </div>
+</section>
+{% endblock %}
