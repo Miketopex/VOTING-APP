@@ -59,6 +59,7 @@ services:
         condition: service_healthy
     expose:
       - "8080"
+    restart: unless-stopped
     networks:
       - app-network
 
@@ -99,6 +100,7 @@ services:
     depends_on:
       vote-service:
         condition: service_healthy
+    restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
