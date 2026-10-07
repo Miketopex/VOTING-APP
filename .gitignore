@@ -1,0 +1,17 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+.terraform.lock.hcl
+
+# Environment files
+.env
+node_modules/
+
+# TLS certificates and private keys
+squad-d-devops/nginx/certs/*
+!squad-d-devops/nginx/certs/.gitkeep

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Error {{ code }}{% endblock %}
+{% block content %}
+<div class="auth-card card center">
+  <p class="eyebrow">Error {{ code }}</p>
+  <h1>{% if code == 404 %}Not found{% elif code == 403 %}Admins only{% elif code == 400 %}Request problem{% else %}Something went wrong{% endif %}</h1>
+  <p class="muted">{{ message }}</p>
+  <a class="btn btn-primary" href="{{ url_for('polls.index') }}">Go to polls</a>
+</div>
+{% endblock %}
