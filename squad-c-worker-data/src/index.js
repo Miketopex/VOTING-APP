@@ -7,7 +7,7 @@
 const { createClient } = require('redis');
 const { Pool } = require('pg');
 
-const { loadConfing } = require('./config');
+const { loadConfig } = require('./config');
 const { createLogger } = require('./logger');
 const { createProcessor } = require('./processor');
 const { runLoop, sleep } = require('./loop');
