@@ -25,7 +25,7 @@ variable "instance_type" {
   default     = "t3.micro"
 }
 
-variable "key_pair_name" {
+variable "key_name" {
   description = "Name of an EXISTING EC2 key pair for SSH"
   type        = string
 }

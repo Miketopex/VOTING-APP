@@ -52,13 +52,13 @@ resource "aws_iam_role_policy" "app" {
         Sid      = "Backups"
         Effect   = "Allow"
         Action   = ["s3:PutObject", "s3:GetObject"]
-        Resource = "${aws_s3_bucket.backups.arn}/backups/*"
+        Resource = "${aws_s3_bucket.cloudvote_backups.arn}/backups/*"
       },
       {
         Sid      = "ListBackups"
         Effect   = "Allow"
         Action   = ["s3:ListBucket"]
-        Resource = aws_s3_bucket.backups.arn
+        Resource = aws_s3_bucket.cloudvote_backups.arn
       },
     ]
   })
