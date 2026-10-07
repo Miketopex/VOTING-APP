@@ -1,0 +1,65 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.event.workflow_run.head_sha }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      EC2_HOST: ${{ secrets.EC2_HOST }}
+      EC2_USER: ${{ secrets.EC2_USER }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push vote image
+        uses: docker/build-push-action@v6
+        with:
+          context: squad-b-vote-service
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/cloudvote-vote:${{ env.TAG }}
+
+      - name: Build and push worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: squad-c-worker-data
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/cloudvote-worker:${{ env.TAG }}
+
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
+
+      - name: Copy compose file and scripts to EC2
+        run: |
+          ssh "$EC2_USER@$EC2_HOST" "mkdir -p /opt/cloudvote/squad-d-devops/nginx"
+          scp docker-compose.yml \
+              squad-d-devops/scripts/deploy.sh \
+              squad-d-devops/scripts/fetch-env.sh \
+              "$EC2_USER@$EC2_HOST":/opt/cloudvote/
+          scp -r squad-d-devops/nginx/. \
+              "$EC2_USER@$EC2_HOST":/opt/cloudvote/squad-d-devops/nginx/
+
+      - name: Deploy (health check and rollback are inside deploy.sh)
+        run: |
+          ssh "$EC2_USER@$EC2_HOST" \
+            "chmod +x /opt/cloudvote/*.sh && cd /opt/cloudvote && DOCKERHUB_USER='$DOCKERHUB_USERNAME' IMAGE_TAG='$TAG' ./deploy.sh"
