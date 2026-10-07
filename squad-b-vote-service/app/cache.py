@@ -10,12 +10,17 @@ Key layout (shared with the Node.js worker – see worker/src/config.js):
     stats:*                    STRING counters (queued, processed, duplicate, failed,
                                        cache_hits, cache_misses)
 """
+squad-b-voting-polls-Richard-Chinedu
 import logging
 
 from flask import current_app
 
 log = logging.getLogger("cloudvote")
 
+
+from flask import current_app
+
+main
 
 def get_redis():
     app = current_app
@@ -53,6 +58,7 @@ def results_key(poll_id: int) -> str:
 
 
 def stat(name: str) -> int:
+squad-b-voting-polls-Richard-Chinedu
     """A counter, or 0 when Redis cannot answer.
 
     These are read four times by the admin dashboard — the page you open *because*
@@ -74,3 +80,11 @@ def incr(name: str) -> None:
         get_redis().incr(f"stats:{name}")
     except Exception:  # noqa: BLE001 – cache down: drop the increment, keep serving
         log.warning("cache_unavailable", extra={"stat": name})
+
+    value = get_redis().get(f"stats:{name}")
+    return int(value) if value else 0
+
+
+def incr(name: str) -> None:
+    get_redis().incr(f"stats:{name}")
+ main

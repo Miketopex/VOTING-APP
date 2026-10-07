@@ -108,11 +108,15 @@ def create_poll(question: str, labels: list[str], created_by: int | None) -> int
 
 def set_poll_open(poll_id: int, is_open: bool) -> bool:
     changed = execute("UPDATE polls SET is_open = %s WHERE id = %s", (is_open, poll_id))
+squad-b-voting-polls-Richard-Chinedu
     try:
         cache.get_redis().delete(cache.results_key(poll_id))
     except Exception:  # noqa: BLE001 – the poll is already closed in the database and
         # a stale cached copy expires on its own; not worth a 500 to the admin
         log.warning("cache_unavailable", extra={"poll_id": poll_id})
+
+    cache.get_redis().delete(cache.results_key(poll_id))
+main
     log.info("poll_status_changed", extra={"poll_id": poll_id, "is_open": is_open})
     return bool(changed)
 
@@ -282,6 +286,7 @@ def _check(fn):
 def worker_health():
     """Ask the worker's own /health endpoint; fall back to its Redis heartbeat."""
     url = current_app.config["WORKER_HEALTH_URL"]
+ squad-b-voting-polls-Richard-Chinedu
     try:
         heartbeat = cache.get_redis().get("worker:heartbeat")
     except Exception:  # noqa: BLE001 – cache down: we simply do not know the age
@@ -291,6 +296,10 @@ def worker_health():
         age = round(time.time() - int(heartbeat) / 1000, 1) if heartbeat else None
     except (TypeError, ValueError):
         age = None
+
+    heartbeat = cache.get_redis().get("worker:heartbeat")
+    age = round(time.time() - int(heartbeat) / 1000, 1) if heartbeat else None
+ main
     if url:
         try:
             with urllib.request.urlopen(url, timeout=2) as resp:  # noqa: S310 – internal URL from config
