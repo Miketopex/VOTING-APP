@@ -30,3 +30,7 @@ def stat(name: str) -> int:
     except Exception:
         log.warning("cache_unavailable", extra={"stat": name})
         return 0
+
+def pending_key(poll_id: int, user_id: int) -> str:
+    """Returns the formatted cache key for a pending vote to track user actions."""
+    return f"pending:{poll_id}:{user_id}"

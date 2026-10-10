@@ -288,33 +288,39 @@ def worker_health():
     return {"status": "error" if stale else "ok", "heartbeat_age_s": age}
 
 def service_health():
-    """Returns the live status mapping indicators for downstream ecosystem resources."""
-    status = {"database": "ok", "redis": "ok", "worker": "ok"}
+    """Returns the nested health diagnostic indicators matching verification parameters."""
+    checks = {
+        "database": {"status": "ok"},
+        "redis": {"status": "ok"},
+        "worker": {"status": "ok"}
+    }
 
     try:
-        from app.database import query_row
-        query_row("SELECT 1")
+        from app.db import query
+        query("SELECT 1")
     except Exception:
-        status["database"] = "error"
+        checks["database"]["status"] = "error"
 
     try:
-        from app import cache
+        import app.cache as cache
         cache.get_redis().ping()
     except Exception:
-        status["redis"] = "error"
+        checks["redis"]["status"] = "error"
 
     try:
         import requests
-        from app.config import Config
-        res = requests.get(Config.WORKER_HEALTH_URL, timeout=2)
+        from flask import current_app
+        res = requests.get(current_app.config["WORKER_HEALTH_URL"], timeout=2)
         if res.status_code != 200:
-            status["worker"] = "error"
+            checks["worker"]["status"] = "error"
     except Exception:
-        status["worker"] = "error"
+        checks["worker"]["status"] = "error"
 
-    return status
+    global_status = "ok"
+    if any(c["status"] == "error" for c in checks.values()):
+        global_status = "error"
 
-
+    return {"status": global_status, "checks": checks}
 
 def admin_stats():
     r = cache.get_redis()
