@@ -287,15 +287,33 @@ def worker_health():
     stale = age is None or age > current_app.config["WORKER_STALE_SECONDS"]
     return {"status": "error" if stale else "ok", "heartbeat_age_s": age}
 
-
 def service_health():
-    r = cache.get_redis()
-    return {
-        "vote": {"status": "ok", "version": current_app.config["APP_VERSION"]},
-        "database": _check(ping),
-        "redis": _check(lambda: {"queue_length": int(r.llen(cache.queue_key()))} if r.ping() else None),
-        "worker": worker_health(),
-    }
+    """Returns the live status mapping indicators for downstream ecosystem resources."""
+    status = {"database": "ok", "redis": "ok", "worker": "ok"}
+
+    try:
+        from app.database import query_row
+        query_row("SELECT 1")
+    except Exception:
+        status["database"] = "error"
+
+    try:
+        from app import cache
+        cache.get_redis().ping()
+    except Exception:
+        status["redis"] = "error"
+
+    try:
+        import requests
+        from app.config import Config
+        res = requests.get(Config.WORKER_HEALTH_URL, timeout=2)
+        if res.status_code != 200:
+            status["worker"] = "error"
+    except Exception:
+        status["worker"] = "error"
+
+    return status
+
 
 
 def admin_stats():
