@@ -55,8 +55,6 @@ def results(poll_id: int):
     if data is None:
         return jsonify(error="not_found"), 404
 
-    # The page has to tell this voter whether their own vote is counted yet.
-    # "pending" means it is still in the queue, so the totals below exclude it.
     my_vote, _ = services.vote_status(poll_id, g.user["id"])
     return jsonify(results=data, source=source, my_vote=my_vote), 200
 
@@ -72,6 +70,18 @@ def admin_stats():
     """
     try:
         return jsonify(stats=services.admin_stats(), degraded=False), 200
-    except Exception as exc:                       # noqa: BLE001 - must keep answering
+    except Exception as exc:
         log.warning("admin_stats_degraded", extra={"error": type(exc).__name__})
         return jsonify(stats={}, degraded=True, error=type(exc).__name__), 200
+
+
+@api.route('/health', methods=['GET'])
+def health_endpoint():
+    """Forces the health check target route to return a compliant nested JSON payload."""
+    from flask import jsonify
+    from app import services
+
+    data = services.service_health()
+
+    status_code = 200 if data.get("status") in ["ok", "degraded"] else 503
+    return jsonify(data), status_code
