@@ -1,68 +1,77 @@
 import logging
+import os
+from datetime import timedelta
+from urllib.parse import quote
+
 log = logging.getLogger(__name__)
-"""Redis access: the vote queue, the results cache and shared counters.
 
-Key layout (shared with the Node.js worker – see worker/src/config.js):
+def _bool(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
 
-    votes                      LIST   queue of pending votes (LPUSH here, BRPOP in worker)
-    votes:failed               LIST   messages the worker could not process (dead-letter)
-    pending:{poll}:{user}      STRING set while a user's vote waits in the queue
-    results:{poll}             STRING cached JSON results (short TTL, deleted by the worker)
-    worker:heartbeat           STRING epoch ms, refreshed by the worker every loop
-    stats:*                    STRING counters (queued, processed, duplicate, failed,
-                                       cache_hits, cache_misses)
-"""
-from flask import current_app
-
-
-def get_redis():
-    app = current_app
-    client = app.extensions.get("cloudvote_redis")
-    if client is None:
-        client = app.config.get("REDIS_CLIENT")
-        if client is None:
-            import redis
-
-            client = redis.Redis.from_url(
-                app.config["REDIS_URL"],
-                decode_responses=True,
-                socket_timeout=3,
-                socket_connect_timeout=3,
-                health_check_interval=30,
-            )
-        app.extensions["cloudvote_redis"] = client
-    return client
-
-
-def queue_key() -> str:
-    return current_app.config["VOTE_QUEUE"]
-
-
-def failed_key() -> str:
-    return current_app.config["VOTE_QUEUE"] + ":failed"
-
-
-def pending_key(poll_id: int, user_id: int) -> str:
-    return f"pending:{poll_id}:{user_id}"
-
-
-def results_key(poll_id: int) -> str:
-    return f"results:{poll_id}"
-
-
-def stat(name: str) -> int:
-    """A counter, or 0 when Redis cannot answer.
-
-    These are read four times by the admin dashboard — the page you open *because*
-    something looks wrong. If a counter lookup could raise, the one page that tells
-    you Redis is down would be the page that breaks when Redis is down.
-    """
+def _int(name: str, default: int) -> int:
     try:
-        value = get_redis().get(f"stats:{name}")
-        return int(value) if value else 0
-    except Exception:
-        log.warning("cache_unavailable", extra={"stat": name})
-        return 0
+        return int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
 
+def _database_url() -> str:
+    if os.environ.get("DATABASE_URL"):
+        return os.environ["DATABASE_URL"]
+    if os.environ.get("POSTGRES_PASSWORD"):
+        user = os.environ.get("POSTGRES_USER", "voting")
+        password = quote(os.environ["POSTGRES_PASSWORD"], safe="")
+        host = os.environ.get("POSTGRES_HOST", "db")
+        port = os.environ.get("POSTGRES_PORT", "5432")
+        name = os.environ.get("POSTGRES_DB", "voting")
+        return f"postgresql://{user}:{password}@{host}:{port}/{name}"
+    return "sqlite:///instance/cloudvote.db"
 
+def _redis_url() -> str:
+    if os.environ.get("REDIS_URL"):
+        return os.environ["REDIS_URL"]
+    host = os.environ.get("REDIS_HOST", "redis")
+    port = os.environ.get("REDIS_PORT", "6379")
+    password = os.environ.get("REDIS_PASSWORD")
+    auth = f":{quote(password, safe='')}@" if password else ""
+    return f"redis://{auth}{host}:{port}/0"
 
+class Config:
+    APP_NAME = "CloudVote"
+    SECRET_KEY = os.environ.get("SECRET_KEY", "")
+    APP_VERSION = os.environ.get("APP_VERSION", "dev")
+    LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
+
+    DATABASE_URL = _database_url()
+    REDIS_URL = _redis_url()
+
+    VOTE_QUEUE = os.environ.get("VOTE_QUEUE", "votes")
+    RESULTS_CACHE_SECONDS = _int("RESULTS_CACHE_SECONDS", 10)
+    PENDING_VOTE_SECONDS = _int("PENDING_VOTE_SECONDS", 600)
+
+    WORKER_HEALTH_URL = os.environ.get("WORKER_HEALTH_URL", "http://worker:8080/health")
+    WORKER_STALE_SECONDS = _int("WORKER_STALE_SECONDS", 30)
+
+    ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "")
+    ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+    SEED_DEMO_POLL = _bool("SEED_DEMO_POLL", True)
+
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+    SESSION_COOKIE_SECURE = _bool("SESSION_COOKIE_SECURE", False)
+    PERMANENT_SESSION_LIFETIME = timedelta(hours=_int("SESSION_HOURS", 8))
+    CSRF_ENABLED = True
+
+    REDIS_CLIENT = None
+    TESTING = False
+
+class TestConfig(Config):
+    TESTING = True
+    SECRET_KEY = "test-secret-key-that-is-at-least-32-bytes-long"
+    CSRF_ENABLED = False
+    ADMIN_USERNAME = "admin"
+    ADMIN_PASSWORD = "Admin12345"
+    SEED_DEMO_POLL = True
+    WORKER_HEALTH_URL = ""

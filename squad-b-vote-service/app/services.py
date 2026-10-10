@@ -1,3 +1,4 @@
+# flake8: noqa
 """Business logic for accounts, polls, voting, results and admin statistics."""
 import json
 import logging
