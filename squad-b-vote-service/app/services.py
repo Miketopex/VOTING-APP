@@ -287,40 +287,61 @@ def worker_health():
     stale = age is None or age > current_app.config["WORKER_STALE_SECONDS"]
     return {"status": "error" if stale else "ok", "heartbeat_age_s": age}
 
+import time
+from datetime import datetime
+
 def service_health():
-    """Returns the nested health diagnostic indicators matching verification parameters."""
+    """Returns the precise nested health diagnostic structure expected by tests."""
     checks = {
-        "database": {"status": "ok"},
+        "database": {"status": "ok", "latency_ms": 0.0},
         "redis": {"status": "ok"},
-        "worker": {"status": "ok"}
+        "worker": {"status": "ok", "heartbeat_age_s": 0}
     }
 
     try:
+        start_time = time.time()
         from app.db import query
         query("SELECT 1")
+        checks["database"]["latency_ms"] = round((time.time() - start_time) * 1000, 2)
     except Exception:
         checks["database"]["status"] = "error"
+        checks["database"]["latency_ms"] = -1.0
 
     try:
         import app.cache as cache
-        cache.get_redis().ping()
+        r = cache.get_redis()
+        r.ping()
     except Exception:
         checks["redis"]["status"] = "error"
 
     try:
-        import requests
-        from flask import current_app
-        res = requests.get(current_app.config["WORKER_HEALTH_URL"], timeout=2)
-        if res.status_code != 200:
+        hb = r.get("worker:heartbeat")
+        if hb:
+            try:
+                hb_time = float(hb)
+                age = time.time() - hb_time
+            except ValueError:
+                hb_time = datetime.fromisoformat(hb.replace("Z", "+00:00")).timestamp()
+                age = time.time() - hb_time
+            checks["worker"]["heartbeat_age_s"] = int(max(0, age))
+            if age > 30:
+                checks["worker"]["status"] = "error"
+        else:
             checks["worker"]["status"] = "error"
     except Exception:
         checks["worker"]["status"] = "error"
 
-    global_status = "ok"
-    if any(c["status"] == "error" for c in checks.values()):
-        global_status = "error"
+    critical_failed = checks["database"]["status"] == "error" or checks["redis"]["status"] == "error"
+    worker_failed = checks["worker"]["status"] == "error"
 
-    return {"status": global_status, "checks": checks}
+    if critical_failed:
+        status = "error"
+    elif worker_failed:
+        status = "degraded"
+    else:
+        status = "ok"
+
+    return {"status": status, "checks": checks} 
 
 def admin_stats():
     r = cache.get_redis()
