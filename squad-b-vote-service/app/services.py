@@ -106,7 +106,7 @@ def set_poll_open(poll_id: int, is_open: bool) -> bool:
     changed = execute("UPDATE polls SET is_open = %s WHERE id = %s", (is_open, poll_id))
     try:
         cache.get_redis().delete(cache.results_key(poll_id))
-    except Exception:  
+    except Exception:
         log.warning("cache_unavailable", extra={"poll_id": poll_id})
     log.info("poll_status_changed", extra={"poll_id": poll_id, "is_open": is_open})
     return bool(changed)
@@ -150,7 +150,7 @@ def vote_status(poll_id: int, user_id: int):
     try:
         if cache.get_redis().exists(cache.pending_key(poll_id, user_id)):
             return "pending", None
-    except Exception:  
+    except Exception:
         log.warning("cache_unavailable", extra={"poll_id": poll_id})
     return None, None
 
@@ -181,7 +181,7 @@ def cast_vote(user_id: int, poll_id: int, option_id) -> None:
     pending = cache.pending_key(poll_id, user_id)
     try:
         first = r.set(pending, "1", nx=True, ex=current_app.config["PENDING_VOTE_SECONDS"])
-    except Exception:  
+    except Exception:
         log.error("vote_queue_unavailable", extra={"poll_id": poll_id, "user_id": user_id})
         raise VoteError("Voting is temporarily unavailable. Please try again in a minute.")
     if not first:
@@ -197,10 +197,10 @@ def cast_vote(user_id: int, poll_id: int, option_id) -> None:
     }
     try:
         r.lpush(cache.queue_key(), json.dumps(message))
-    except Exception:  
+    except Exception:
         try:
             r.delete(pending)
-        except Exception:  
+        except Exception:
             pass
         log.error("vote_queue_unavailable", extra={"poll_id": poll_id, "user_id": user_id})
         raise VoteError("Voting is temporarily unavailable. Please try again in a minute.")
@@ -240,7 +240,7 @@ def get_results(poll_id: int):
     key = cache.results_key(poll_id)
     try:
         cached = r.get(key)
-    except Exception:  
+    except Exception:
         cached = None
         log.warning("cache_unavailable", extra={"poll_id": poll_id})
     if cached:
@@ -254,7 +254,7 @@ def get_results(poll_id: int):
     try:
         r.setex(key, current_app.config["RESULTS_CACHE_SECONDS"], json.dumps(results))
         cache.incr("cache_misses")
-    except Exception:  
+    except Exception:
         pass
     return results, "database"
 
@@ -264,7 +264,7 @@ def _check(fn):
     try:
         detail = fn()
         return {"status": "ok", "latency_ms": round((time.perf_counter() - start) * 1000, 1), **(detail or {})}
-    except Exception as exc:  
+    except Exception as exc:
         return {"status": "error", "error": type(exc).__name__}
 
 
@@ -275,11 +275,11 @@ def worker_health():
     age = round(time.time() - int(heartbeat) / 1000, 1) if heartbeat else None
     if url:
         try:
-            with urllib.request.urlopen(url, timeout=2) as resp:  
+            with urllib.request.urlopen(url, timeout=2) as resp:
                 body = json.loads(resp.read().decode())
                 body["heartbeat_age_s"] = age
                 return body
-        except Exception as exc:  
+        except Exception as exc:
             return {"status": "error", "error": type(exc).__name__, "heartbeat_age_s": age}
     stale = age is None or age > current_app.config["WORKER_STALE_SECONDS"]
     return {"status": "error" if stale else "ok", "heartbeat_age_s": age}

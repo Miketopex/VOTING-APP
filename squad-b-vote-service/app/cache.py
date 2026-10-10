@@ -1,3 +1,5 @@
+import logging
+log = logging.getLogger(__name__)
 """Redis access: the vote queue, the results cache and shared counters.
 
 Key layout (shared with the Node.js worker – see worker/src/config.js):
@@ -19,7 +21,7 @@ def get_redis():
     if client is None:
         client = app.config.get("REDIS_CLIENT")
         if client is None:
-            import redis 
+            import redis
 
             client = redis.Redis.from_url(
                 app.config["REDIS_URL"],
@@ -58,8 +60,9 @@ def stat(name: str) -> int:
     try:
         value = get_redis().get(f"stats:{name}")
         return int(value) if value else 0
-    except Exception:  
+    except Exception:
         log.warning("cache_unavailable", extra={"stat": name})
         return 0
+
 
 
