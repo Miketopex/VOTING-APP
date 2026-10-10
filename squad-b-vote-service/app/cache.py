@@ -1,4 +1,5 @@
 # flake8: noqa
+# flake8: noqa
 import logging
 import redis
 from app.config import Config
