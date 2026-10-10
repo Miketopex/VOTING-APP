@@ -108,7 +108,6 @@ def set_poll_open(poll_id: int, is_open: bool) -> bool:
         cache.get_redis().delete(cache.results_key(poll_id))
     except Exception:  
         log.warning("cache_unavailable", extra={"poll_id": poll_id})
-
     log.info("poll_status_changed", extra={"poll_id": poll_id, "is_open": is_open})
     return bool(changed)
 
