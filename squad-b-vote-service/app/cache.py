@@ -1,79 +1,31 @@
 # flake8: noqa
-# flake8: noqa
 import logging
-import os
-from datetime import timedelta
-from urllib.parse import quote
+import redis
+from app.config import Config
 
 log = logging.getLogger(__name__)
 
-def _bool(name: str, default: bool = False) -> bool:
-    value = os.environ.get(name)
-    if value is None:
-        return default
-    return value.strip().lower() in {"1", "true", "yes", "on"}
+def get_redis():
+    """Returns a thread-safe Redis client instance matching our configuration."""
+    return redis.from_url(Config.REDIS_URL, decode_responses=True)
 
-def _int(name: str, default: int) -> int:
+def results_key(poll_id: int) -> str:
+    """Returns the formatted cache key for poll results."""
+    return f"polls:{poll_id}:results"
+
+def incr(name: str) -> int:
+    """Increments a database performance counter metric metric inside our cache engine."""
     try:
-        return int(os.environ.get(name, default))
-    except (TypeError, ValueError):
-        return default
+        return get_redis().incr(f"stats:{name}")
+    except Exception:
+        log.warning("cache_unavailable", extra={"stat": name})
+        return 0
 
-def _database_url() -> str:
-    if os.environ.get("DATABASE_URL"):
-        return os.environ["DATABASE_URL"]
-    if os.environ.get("POSTGRES_PASSWORD"):
-        user = os.environ.get("POSTGRES_USER", "voting")
-        password = quote(os.environ["POSTGRES_PASSWORD"], safe="")
-        host = os.environ.get("POSTGRES_HOST", "db")
-        port = os.environ.get("POSTGRES_PORT", "5432")
-        name = os.environ.get("POSTGRES_DB", "voting")
-        return f"postgresql://{user}:{password}@{host}:{port}/{name}"
-    return "sqlite:///instance/cloudvote.db"
-
-def _redis_url() -> str:
-    if os.environ.get("REDIS_URL"):
-        return os.environ["REDIS_URL"]
-    host = os.environ.get("REDIS_HOST", "redis")
-    port = os.environ.get("REDIS_PORT", "6379")
-    password = os.environ.get("REDIS_PASSWORD")
-    auth = f":{quote(password, safe='')}@" if password else ""
-    return f"redis://{auth}{host}:{port}/0"
-
-class Config:
-    APP_NAME = "CloudVote"
-    SECRET_KEY = os.environ.get("SECRET_KEY", "")
-    APP_VERSION = os.environ.get("APP_VERSION", "dev")
-    LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
-
-    DATABASE_URL = _database_url()
-    REDIS_URL = _redis_url()
-
-    VOTE_QUEUE = os.environ.get("VOTE_QUEUE", "votes")
-    RESULTS_CACHE_SECONDS = _int("RESULTS_CACHE_SECONDS", 10)
-    PENDING_VOTE_SECONDS = _int("PENDING_VOTE_SECONDS", 600)
-
-    WORKER_HEALTH_URL = os.environ.get("WORKER_HEALTH_URL", "http://worker:8080/health")
-    WORKER_STALE_SECONDS = _int("WORKER_STALE_SECONDS", 30)
-
-    ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "")
-    ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
-    SEED_DEMO_POLL = _bool("SEED_DEMO_POLL", True)
-
-    SESSION_COOKIE_HTTPONLY = True
-    SESSION_COOKIE_SAMESITE = "Lax"
-    SESSION_COOKIE_SECURE = _bool("SESSION_COOKIE_SECURE", False)
-    PERMANENT_SESSION_LIFETIME = timedelta(hours=_int("SESSION_HOURS", 8))
-    CSRF_ENABLED = True
-
-    REDIS_CLIENT = None
-    TESTING = False
-
-class TestConfig(Config):
-    TESTING = True
-    SECRET_KEY = "test-secret-key-that-is-at-least-32-bytes-long"
-    CSRF_ENABLED = False
-    ADMIN_USERNAME = "admin"
-    ADMIN_PASSWORD = "Admin12345"
-    SEED_DEMO_POLL = True
-    WORKER_HEALTH_URL = ""
+def stat(name: str) -> int:
+    """A counter, or 0 when Redis cannot answer."""
+    try:
+        value = get_redis().get(f"stats:{name}")
+        return int(value) if value else 0
+    except Exception:
+        log.warning("cache_unavailable", extra={"stat": name})
+        return 0
