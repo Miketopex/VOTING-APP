@@ -1,0 +1,36 @@
+# Who reviews what.
+#
+# This replaces the squad-named folders. The directories are now named after what
+# they run — vote/, worker/, nginx/ — and ownership lives here instead, which is
+# better than a folder name because GitHub acts on it: open a PR touching vote/ and
+# Squad B is requested as reviewer automatically. That is the "pull requests with
+# peer sign-off" the brief asks for, enforced rather than agreed.
+#
+# Last match wins, so the specific lines below override the catch-all.
+# Replace the placeholder handles with real GitHub usernames before merging.
+
+# Catch-all: the repo lead reviews anything not claimed below.
+*                       @Miketopex
+
+# Squad A — infrastructure
+/infra/                 @Miketopex
+
+# Squad B — vote service
+/vote/                  @Anointed-Excel
+
+# Squad C — worker and data
+/worker/                @Miketopex
+
+# Squad D — containers, nginx, deployment
+/nginx/                 @Miketopex
+/scripts/               @Miketopex
+/docker-compose.yml     @Miketopex
+/docker-compose.prod.yml @Miketopex
+
+# Squad E — QA, monitoring and documentation
+/qa/                    @Miketopex
+/docs/                  @Miketopex
+/README.md              @Miketopex
+
+# CI/CD belongs to Squad D, but a change here affects everyone, so the lead sees it too.
+/.github/               @Miketopex

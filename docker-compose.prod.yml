@@ -1,0 +1,20 @@
+# Production overlay. Use it together with the base file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# The base file BUILDS from ./vote and ./worker, which is right for a laptop and
+# impossible on the server: CD copies the compose files, the scripts and nginx to
+# EC2, never the source. This overlay replaces those builds with the images CD
+# pushed to Docker Hub, tagged with the commit SHA.
+#
+# That is also what makes rollback real. deploy.sh keeps the last good tag in
+# .deployed_tag and re-runs with IMAGE_TAG set to it; without an `image:` key here
+# there is nothing for that variable to change.
+services:
+  vote-service:
+    build: !reset null
+    image: ${DOCKERHUB_USER:?DOCKERHUB_USER is required}/cloudvote-vote:${IMAGE_TAG:?IMAGE_TAG is required}
+
+  worker:
+    build: !reset null
+    image: ${DOCKERHUB_USER:?DOCKERHUB_USER is required}/cloudvote-worker:${IMAGE_TAG:?IMAGE_TAG is required}
