@@ -19,7 +19,7 @@ def get_redis():
     if client is None:
         client = app.config.get("REDIS_CLIENT")
         if client is None:
-            import redis  # imported lazily so tests can run without the package
+            import redis 
 
             client = redis.Redis.from_url(
                 app.config["REDIS_URL"],
@@ -49,9 +49,17 @@ def results_key(poll_id: int) -> str:
 
 
 def stat(name: str) -> int:
-    value = get_redis().get(f"stats:{name}")
-    return int(value) if value else 0
+    """A counter, or 0 when Redis cannot answer.
+
+    These are read four times by the admin dashboard — the page you open *because*
+    something looks wrong. If a counter lookup could raise, the one page that tells
+    you Redis is down would be the page that breaks when Redis is down.
+    """
+    try:
+        value = get_redis().get(f"stats:{name}")
+        return int(value) if value else 0
+    except Exception:  
+        log.warning("cache_unavailable", extra={"stat": name})
+        return 0
 
 
-def incr(name: str) -> None:
-    get_redis().incr(f"stats:{name}")

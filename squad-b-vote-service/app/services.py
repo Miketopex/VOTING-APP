@@ -21,9 +21,6 @@ USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,40}$")
 class VoteError(ValueError):
     """A user-facing problem (bad input, duplicate vote, closed poll …)."""
 
-
-# ------------------------------------------------------------------ users
-
 def register_user(username: str, password: str, confirm: str | None = None, is_admin: bool = False) -> int:
     username = (username or "").strip()
     if not USERNAME_RE.match(username):
@@ -80,7 +77,6 @@ def seed_demo_poll() -> None:
     )
 
 
-# ------------------------------------------------------------------ polls
 
 def create_poll(question: str, labels: list[str], created_by: int | None) -> int:
     question = (question or "").strip()
@@ -108,7 +104,11 @@ def create_poll(question: str, labels: list[str], created_by: int | None) -> int
 
 def set_poll_open(poll_id: int, is_open: bool) -> bool:
     changed = execute("UPDATE polls SET is_open = %s WHERE id = %s", (is_open, poll_id))
-    cache.get_redis().delete(cache.results_key(poll_id))
+    try:
+        cache.get_redis().delete(cache.results_key(poll_id))
+    except Exception:  
+        log.warning("cache_unavailable", extra={"poll_id": poll_id})
+
     log.info("poll_status_changed", extra={"poll_id": poll_id, "is_open": is_open})
     return bool(changed)
 
@@ -151,12 +151,10 @@ def vote_status(poll_id: int, user_id: int):
     try:
         if cache.get_redis().exists(cache.pending_key(poll_id, user_id)):
             return "pending", None
-    except Exception:  # noqa: BLE001 – Redis down: we can still show recorded votes
+    except Exception:  
         log.warning("cache_unavailable", extra={"poll_id": poll_id})
     return None, None
 
-
-# ----------------------------------------------------------------- voting
 
 def cast_vote(user_id: int, poll_id: int, option_id) -> None:
     """Validate a vote and put it on the Redis queue for the worker.
@@ -184,7 +182,7 @@ def cast_vote(user_id: int, poll_id: int, option_id) -> None:
     pending = cache.pending_key(poll_id, user_id)
     try:
         first = r.set(pending, "1", nx=True, ex=current_app.config["PENDING_VOTE_SECONDS"])
-    except Exception:  # noqa: BLE001 – queue unavailable: never pretend the vote was taken
+    except Exception:  
         log.error("vote_queue_unavailable", extra={"poll_id": poll_id, "user_id": user_id})
         raise VoteError("Voting is temporarily unavailable. Please try again in a minute.")
     if not first:
@@ -200,18 +198,16 @@ def cast_vote(user_id: int, poll_id: int, option_id) -> None:
     }
     try:
         r.lpush(cache.queue_key(), json.dumps(message))
-    except Exception:  # noqa: BLE001
+    except Exception:  
         try:
             r.delete(pending)
-        except Exception:  # noqa: BLE001
+        except Exception:  
             pass
         log.error("vote_queue_unavailable", extra={"poll_id": poll_id, "user_id": user_id})
         raise VoteError("Voting is temporarily unavailable. Please try again in a minute.")
     cache.incr("votes_queued")
     log.info("vote_queued", extra={"poll_id": poll_id, "user_id": user_id, "request_id": message["request_id"]})
 
-
-# ---------------------------------------------------------------- results
 
 def _results_from_db(poll):
     counts = {
@@ -245,7 +241,7 @@ def get_results(poll_id: int):
     key = cache.results_key(poll_id)
     try:
         cached = r.get(key)
-    except Exception:  # noqa: BLE001 – cache down: fall back to the database
+    except Exception:  
         cached = None
         log.warning("cache_unavailable", extra={"poll_id": poll_id})
     if cached:
@@ -259,19 +255,17 @@ def get_results(poll_id: int):
     try:
         r.setex(key, current_app.config["RESULTS_CACHE_SECONDS"], json.dumps(results))
         cache.incr("cache_misses")
-    except Exception:  # noqa: BLE001
+    except Exception:  
         pass
     return results, "database"
 
-
-# ------------------------------------------------------------ admin stats
 
 def _check(fn):
     start = time.perf_counter()
     try:
         detail = fn()
         return {"status": "ok", "latency_ms": round((time.perf_counter() - start) * 1000, 1), **(detail or {})}
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  
         return {"status": "error", "error": type(exc).__name__}
 
 
@@ -282,11 +276,11 @@ def worker_health():
     age = round(time.time() - int(heartbeat) / 1000, 1) if heartbeat else None
     if url:
         try:
-            with urllib.request.urlopen(url, timeout=2) as resp:  # noqa: S310 – internal URL from config
+            with urllib.request.urlopen(url, timeout=2) as resp:  
                 body = json.loads(resp.read().decode())
                 body["heartbeat_age_s"] = age
                 return body
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  
             return {"status": "error", "error": type(exc).__name__, "heartbeat_age_s": age}
     stale = age is None or age > current_app.config["WORKER_STALE_SECONDS"]
     return {"status": "error" if stale else "ok", "heartbeat_age_s": age}
