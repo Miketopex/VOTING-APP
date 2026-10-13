@@ -1,271 +1,232 @@
+# =====================================================================
+#  CI – every pull request and every push to a feature branch.
+#  Branch protection on main requires these checks to pass.
+# =====================================================================
 name: CI
 
 on:
   pull_request:
-  push:
     branches: [main]
+  push:
+    branches-ignore: [main]
+  workflow_call:          # re-used by cd.yml before deploying
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  vote-tests:
+  vote-lint-test:
+    name: Vote service · lint + unit tests
     runs-on: ubuntu-latest
+    defaults: { run: { working-directory: vote } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: vote/requirements-dev.txt }
+      - run: pip install -r requirements-dev.txt
+      - run: flake8 app tests wsgi.py
+      - run: pytest -q --cov=app --cov-report=term-missing
 
-    env:
-      TEST_DATABASE_URL: postgresql://postgres:test@localhost:5432/cloudvote
-      TEST_REDIS_URL: redis://localhost:6379/0
-      SECRET_KEY: ci-test-key
-
-    defaults:
-      run:
-        working-directory: squad-b-vote-service
-
+  vote-integration:
+    name: Vote service · tests on real PostgreSQL 16 + Redis 7
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: vote } }
     services:
       postgres:
         image: postgres:16
-        env:
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: cloudvote
-        ports:
-          - "5432:5432"
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
+        env: { POSTGRES_USER: voting, POSTGRES_PASSWORD: ci, POSTGRES_DB: voting_test }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U voting" --health-interval 5s --health-retries 10
       redis:
         image: redis:7
-        ports:
-          - "6379:6379"
-
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://voting:ci@localhost:5432/voting_test
+      TEST_REDIS_URL: redis://localhost:6379/0
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: vote/requirements-dev.txt }
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -q
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: squad-b-vote-service/requirements-dev.txt
-
-      - name: Install dependencies
-        run: pip install -r requirements-dev.txt
-
-      - name: Lint
-        run: flake8 .
-
-      - name: Test
-        run: pytest
-
-  worker-tests:
+  worker-test:
+    name: Worker · syntax check + unit tests
     runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: squad-c-worker-data
-
+    defaults: { run: { working-directory: worker } }
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: squad-c-worker-data/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Test
-        run: node --test
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npm install
+      - run: npm run lint
+      - run: npm test
 
   e2e:
-    needs: [vote-tests, worker-tests]
+    name: End-to-end · full Docker Compose stack
     runs-on: ubuntu-latest
-
-    env:
-      SECRET_KEY: ci-e2e-secret-key
-      POSTGRES_PASSWORD: ci-postgres-password
-      ADMIN_USERNAME: admin
-      ADMIN_PASSWORD: Admin12345
-
+    needs: [vote-lint-test, worker-test]
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Build application containers
-        run: docker compose build
-
-      - name: Start application
-        run: docker compose up -d
-
-      - name: Show container status
-        run: docker compose ps
-
-      - name: Wait for application readiness
-        run: |
-          for i in $(seq 1 30); do
-            if curl -fsS http://localhost/health/ready; then
-              echo "Application is ready."
-              exit 0
-            fi
-
-            echo "Waiting for application..."
-            sleep 3
-          done
-
-          echo "Application failed readiness."
-          docker compose ps
-          docker compose logs --tail=200
-          exit 1
-
-      - name: Run health checks
-        run: bash squad-e-qa-monitoring/health-check.sh
-
-      - name: Run end-to-end tests
-        run: python3 squad-e-qa-monitoring/e2e.py
-
-      - name: Collect logs on failure
+      - uses: actions/checkout@v4
+      - name: Build and start all 5 containers
+        run: docker compose -f docker-compose.dev.yml up -d --build --wait --wait-timeout 180
+      - name: Container health
+        run: docker compose -f docker-compose.dev.yml ps
+      - name: Vote → Redis queue → worker → PostgreSQL → cache → results
+        run: ./scripts/e2e.sh
+        env:
+          BASE_URL: http://localhost:8080
+          ADMIN_USERNAME: admin
+          ADMIN_PASSWORD: DevAdmin123
+      - name: Worker health endpoint
+        run: docker compose -f docker-compose.dev.yml exec -T worker wget -qO- http://127.0.0.1:8080/health
+      - name: Logs on failure
         if: failure()
-        run: docker compose logs --tail=300
-
-      - name: Stop containers
+        run: docker compose -f docker-compose.dev.yml logs --tail 100
+      - name: Tear down
         if: always()
-        run: docker compose down -vname: CI
+        run: docker compose -f docker-compose.dev.yml down -v
+
+  terraform:
+    name: Terraform validate
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: infra/terraform } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform fmt -check -recursive || echo "::warning::Run 'terraform fmt -recursive' in infra/terraform"
+      - run: terraform init -backend=false
+      - run: terraform validate
+
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      # Free for personal accounts. For a GitHub organisation add a free
+      # GITLEAKS_LICENSE secret (gitleaks.io) or delete this job.
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+# =====================================================================
+#  CI – every pull request and every push to a feature branch.
+#  Branch protection on main requires these checks to pass.
+# =====================================================================
+name: CI
 
 on:
   pull_request:
-  push:
     branches: [main]
+  push:
+    branches-ignore: [main]
+  workflow_call:          # re-used by cd.yml before deploying
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  vote-tests:
+  vote-lint-test:
+    name: Vote service · lint + unit tests
     runs-on: ubuntu-latest
+    defaults: { run: { working-directory: vote } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: vote/requirements-dev.txt }
+      - run: pip install -r requirements-dev.txt
+      - run: flake8 app tests wsgi.py
+      - run: pytest -q --cov=app --cov-report=term-missing
 
-    env:
-      TEST_DATABASE_URL: postgresql://postgres:test@localhost:5432/cloudvote
-      TEST_REDIS_URL: redis://localhost:6379/0
-      SECRET_KEY: ci-test-key
-
-    defaults:
-      run:
-        working-directory: squad-b-vote-service
-
+  vote-integration:
+    name: Vote service · tests on real PostgreSQL 16 + Redis 7
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: vote } }
     services:
       postgres:
         image: postgres:16
-        env:
-          POSTGRES_PASSWORD: test
-          POSTGRES_DB: cloudvote
-        ports:
-          - "5432:5432"
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
+        env: { POSTGRES_USER: voting, POSTGRES_PASSWORD: ci, POSTGRES_DB: voting_test }
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U voting" --health-interval 5s --health-retries 10
       redis:
         image: redis:7
-        ports:
-          - "6379:6379"
-
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://voting:ci@localhost:5432/voting_test
+      TEST_REDIS_URL: redis://localhost:6379/0
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12", cache: pip, cache-dependency-path: vote/requirements-dev.txt }
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -q
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: squad-b-vote-service/requirements-dev.txt
-
-      - name: Install dependencies
-        run: pip install -r requirements-dev.txt
-
-      - name: Lint
-        run: flake8 .
-
-      - name: Test
-        run: pytest
-
-  worker-tests:
+  worker-test:
+    name: Worker · syntax check + unit tests
     runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        working-directory: squad-c-worker-data
-
+    defaults: { run: { working-directory: worker } }
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: squad-c-worker-data/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Test
-        run: node --test
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npm install
+      - run: npm run lint
+      - run: npm test
 
   e2e:
-    needs: [vote-tests, worker-tests]
+    name: End-to-end · full Docker Compose stack
     runs-on: ubuntu-latest
-
-    env:
-      SECRET_KEY: ci-e2e-secret-key
-      POSTGRES_PASSWORD: ci-postgres-password
-      ADMIN_USERNAME: admin
-      ADMIN_PASSWORD: Admin12345
-
+    needs: [vote-lint-test, worker-test]
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Build application containers
-        run: docker compose build
-
-      - name: Start application
-        run: docker compose up -d
-
-      - name: Show container status
-        run: docker compose ps
-
-      - name: Wait for application readiness
-        run: |
-          for i in $(seq 1 30); do
-            if curl -fsS http://localhost/health/ready; then
-              echo "Application is ready."
-              exit 0
-            fi
-
-            echo "Waiting for application..."
-            sleep 3
-          done
-
-          echo "Application failed readiness."
-          docker compose ps
-          docker compose logs --tail=200
-          exit 1
-
-      - name: Run health checks
-        run: bash squad-e-qa-monitoring/health-check.sh
-
-      - name: Run end-to-end tests
-        run: python3 squad-e-qa-monitoring/e2e.py
-
-      - name: Collect logs on failure
+      - uses: actions/checkout@v4
+      - name: Build and start all 5 containers
+        run: docker compose -f docker-compose.dev.yml up -d --build --wait --wait-timeout 180
+      - name: Container health
+        run: docker compose -f docker-compose.dev.yml ps
+      - name: Vote → Redis queue → worker → PostgreSQL → cache → results
+        run: ./scripts/e2e.sh
+        env:
+          BASE_URL: http://localhost:8080
+          ADMIN_USERNAME: admin
+          ADMIN_PASSWORD: DevAdmin123
+      - name: Worker health endpoint
+        run: docker compose -f docker-compose.dev.yml exec -T worker wget -qO- http://127.0.0.1:8080/health
+      - name: Logs on failure
         if: failure()
-        run: docker compose logs --tail=300
-
-      - name: Stop containers
+        run: docker compose -f docker-compose.dev.yml logs --tail 100
+      - name: Tear down
         if: always()
-        run: docker compose down -v
+        run: docker compose -f docker-compose.dev.yml down -v
+
+  terraform:
+    name: Terraform validate
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: infra/terraform } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform fmt -check -recursive || echo "::warning::Run 'terraform fmt -recursive' in infra/terraform"
+      - run: terraform init -backend=false
+      - run: terraform validate
+
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      # Free for personal accounts. For a GitHub organisation add a free
+      # GITLEAKS_LICENSE secret (gitleaks.io) or delete this job.
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
