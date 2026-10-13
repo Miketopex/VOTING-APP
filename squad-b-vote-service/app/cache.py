@@ -1,36 +1,57 @@
-# flake8: noqa
-# flake8: noqa
-import logging
-import redis
-from app.config import Config
+"""Redis access: the vote queue, the results cache and shared counters.
 
-log = logging.getLogger(__name__)
+Key layout (shared with the Node.js worker – see worker/src/config.js):
+
+    votes                      LIST   queue of pending votes (LPUSH here, BRPOP in worker)
+    votes:failed               LIST   messages the worker could not process (dead-letter)
+    pending:{poll}:{user}      STRING set while a user's vote waits in the queue
+    results:{poll}             STRING cached JSON results (short TTL, deleted by the worker)
+    worker:heartbeat           STRING epoch ms, refreshed by the worker every loop
+    stats:*                    STRING counters (queued, processed, duplicate, failed,
+                                       cache_hits, cache_misses)
+"""
+from flask import current_app
+
 
 def get_redis():
-    """Returns a thread-safe Redis client instance matching our configuration."""
-    return redis.from_url(Config.REDIS_URL, decode_responses=True)
+    app = current_app
+    client = app.extensions.get("cloudvote_redis")
+    if client is None:
+        client = app.config.get("REDIS_CLIENT")
+        if client is None:
+            import redis  # imported lazily so tests can run without the package
 
-def results_key(poll_id: int) -> str:
-    """Returns the formatted cache key for poll results."""
-    return f"polls:{poll_id}:results"
+            client = redis.Redis.from_url(
+                app.config["REDIS_URL"],
+                decode_responses=True,
+                socket_timeout=3,
+                socket_connect_timeout=3,
+                health_check_interval=30,
+            )
+        app.extensions["cloudvote_redis"] = client
+    return client
 
-def incr(name: str) -> int:
-    """Increments a database performance counter metric metric inside our cache engine."""
-    try:
-        return get_redis().incr(f"stats:{name}")
-    except Exception:
-        log.warning("cache_unavailable", extra={"stat": name})
-        return 0
 
-def stat(name: str) -> int:
-    """A counter, or 0 when Redis cannot answer."""
-    try:
-        value = get_redis().get(f"stats:{name}")
-        return int(value) if value else 0
-    except Exception:
-        log.warning("cache_unavailable", extra={"stat": name})
-        return 0
+def queue_key() -> str:
+    return current_app.config["VOTE_QUEUE"]
+
+
+def failed_key() -> str:
+    return current_app.config["VOTE_QUEUE"] + ":failed"
+
 
 def pending_key(poll_id: int, user_id: int) -> str:
-    """Returns the formatted cache key for a pending vote to track user actions."""
     return f"pending:{poll_id}:{user_id}"
+
+
+def results_key(poll_id: int) -> str:
+    return f"results:{poll_id}"
+
+
+def stat(name: str) -> int:
+    value = get_redis().get(f"stats:{name}")
+    return int(value) if value else 0
+
+
+def incr(name: str) -> None:
+    get_redis().incr(f"stats:{name}")
