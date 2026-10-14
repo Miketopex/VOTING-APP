@@ -37,6 +37,12 @@ locals {
     ADMIN_USERNAME    = { value = var.admin_username, secure = false }
     LOG_LEVEL         = { value = "INFO", secure = false }
     SEED_DEMO_POLL    = { value = "true", secure = false }
+
+    # scripts/backup-db.sh reads both of these out of .env. Before they were here it
+    # had no way to learn the bucket name, so the nightly backup could not have
+    # worked even once the rest of it was fixed.
+    BACKUP_BUCKET = { value = aws_s3_bucket.cloudvote_backups.id, secure = false }
+    AWS_REGION    = { value = var.aws_region, secure = false }
   }
 }
 

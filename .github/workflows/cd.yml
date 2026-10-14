@@ -61,6 +61,8 @@ jobs:
               docker-compose.prod.yml \
               scripts/deploy.sh \
               scripts/fetch-env.sh \
+              scripts/backup-db.sh \
+              scripts/restore-db.sh \
               "$EC2_USER@$EC2_HOST":/opt/cloudvote/
           scp -r nginx/. \
               "$EC2_USER@$EC2_HOST":/opt/cloudvote/nginx/
