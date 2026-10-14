@@ -1,0 +1,39 @@
+# Who reviews what.
+#
+# This replaces the squad-named folders. Directories are now named after what they
+# run — vote/, worker/, nginx/ — and ownership lives here instead, which is better
+# than a folder name because GitHub acts on it: open a PR touching vote/ and Squad B
+# is requested as reviewer automatically. That is the "pull requests with peer
+# sign-off" the brief asks for, enforced rather than agreed.
+#
+# Handles below are taken from who actually pushed to each squad branch. Please
+# correct your own line if it is wrong — CODEOWNERS only works for people with write
+# access to the repository, so anyone missing that will be skipped silently.
+#
+# Last match wins, so the specific lines override the catch-all.
+
+# Catch-all: the repo lead reviews anything not claimed below.
+*                           @Miketopex
+
+# Squad A — infrastructure
+/infra/                     @sanyoniyoo @zyntraRalph @fisayoalao3
+
+# Squad B — vote service
+/vote/                      @Anointed-Excel @Richardjoseph11
+
+# Squad C — worker and data
+/worker/                    @Raphinol
+
+# Squad D — containers, nginx, deployment
+/nginx/                     @uwakmfon-cloud @Ollaryboss-dev
+/scripts/                   @uwakmfon-cloud @Ollaryboss-dev
+/docker-compose.yml         @uwakmfon-cloud @Ollaryboss-dev
+/docker-compose.prod.yml    @uwakmfon-cloud @Ollaryboss-dev
+
+# Squad E — QA, monitoring and documentation
+/qa/                        @arinzenwosu330-source @uwakmfon-cloud
+/docs/                      @arinzenwosu330-source @uwakmfon-cloud
+/README.md                  @arinzenwosu330-source @uwakmfon-cloud
+
+# CI/CD is Squad D's, but a change here affects every squad, so the lead sees it too.
+/.github/                   @uwakmfon-cloud @Miketopex

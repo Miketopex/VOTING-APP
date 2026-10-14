@@ -7,9 +7,17 @@ NEW_TAG="${IMAGE_TAG:?IMAGE_TAG is required}"
 export DOCKERHUB_USER="${DOCKERHUB_USER:?DOCKERHUB_USER is required}"
 PREV_TAG="$(cat .deployed_tag 2>/dev/null || echo "")"
 
+# Both files, always: the base one describes the stack, the overlay swaps the two
+# built services for the images CD pushed. Without the overlay `docker compose up`
+# tries to build from ./vote, which does not exist on this box.
+COMPOSE="docker compose -f docker-compose.yml -f docker-compose.prod.yml"
+
 health_check() {
   for i in $(seq 1 20); do
-    if curl -fsk https://localhost/health >/dev/null; then
+    # http, not https: nginx.conf only has a :80 server block. The old check used
+    # https, which never answered, so every deploy failed its own health check and
+    # rolled itself back.
+    if curl -fs http://localhost/health >/dev/null; then
       return 0
     fi
     echo "waiting for health ($i/20)..."
@@ -22,8 +30,8 @@ health_check() {
 echo "Deploying $NEW_TAG (previous: ${PREV_TAG:-none})"
 
 export IMAGE_TAG="$NEW_TAG"
-docker compose pull
-docker compose up -d --remove-orphans
+$COMPOSE pull
+$COMPOSE up -d --remove-orphans
 
 if health_check; then
   echo "$NEW_TAG" > .deployed_tag
@@ -35,7 +43,7 @@ fi
 echo "HEALTH CHECK FAILED: rolling back"
 if [ -n "$PREV_TAG" ]; then
   export IMAGE_TAG="$PREV_TAG"
-  docker compose up -d --remove-orphans
+  $COMPOSE up -d --remove-orphans
   if health_check; then
     echo "rolled back to $PREV_TAG"
   else
