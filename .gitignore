@@ -15,3 +15,13 @@ node_modules/
 # TLS certificates and private keys
 squad-d-devops/nginx/certs/*
 !squad-d-devops/nginx/certs/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# macOS - a .DS_Store has been committed to this repo once already
+.DS_Store
