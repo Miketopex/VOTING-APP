@@ -1,8 +1,35 @@
-ami_id                     = "ami-xxxxxxxxxxxxxxxxx"
-instance_type               = "t3.micro"
-key_name                    = "your-ec2-keypair-name"
-subnet_id                   = "subnet-xxxxxxxxxxxxxxxxx"
-security_group_id           = "sg-xxxxxxxxxxxxxxxxx"
-iam_instance_profile_name   = "cloudvote-prod-ec2-role"
-environment                 = "prod"
-backup_bucket_name          = "cloudvote-prod-backups-unique123"
+# Copy to terraform.tfvars and fill in, then `terraform plan`.
+# terraform.tfvars is gitignored; this example is not. Never put real values here.
+
+# ── required ────────────────────────────────────────────────────────────────
+# An EC2 key pair that already exists in this region. Terraform does not create it:
+#   aws ec2 create-key-pair --key-name cloudvote --query KeyMaterial --output text > cloudvote.pem
+key_name = "your-ec2-keypair-name"
+
+# Where CloudWatch alarms are sent. AWS mails a confirmation link to this address
+# once; the subscription does nothing until someone clicks it.
+alert_email = "you@example.com"
+
+# S3 bucket for database backups. Bucket names are globally unique, so this has to be
+# something nobody else has taken.
+backup_bucket_name = "cloudvote-prod-backups-change-me"
+
+# ── optional ────────────────────────────────────────────────────────────────
+# Leave ami_id unset and the newest Ubuntu 24.04 LTS image for the region is looked
+# up automatically. Set it only to pin a specific image.
+# ami_id = "ami-xxxxxxxxxxxxxxxxx"
+
+aws_region            = "us-east-1"
+environment           = "prod"
+instance_type         = "t3.micro"
+backup_retention_days = 14
+
+# Who may reach port 22. GitHub Actions deploys over SSH from changing IP addresses,
+# so the default is open with key-only login. Narrow it if you deploy from fixed IPs.
+# ssh_allowed_cidrs = ["203.0.113.4/32"]
+
+# NOTE: there is deliberately no subnet_id, security_group_id or
+# iam_instance_profile_name here. An earlier version of this file set all three.
+# Terraform CREATES those (network.tf, iam.tf) — passing them in made `terraform apply`
+# fail with "Value for undeclared variable" while silently omitting key_name and
+# alert_email, which are genuinely required.
