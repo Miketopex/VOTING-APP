@@ -1,7 +1,7 @@
 services:
   vote-service:
     build:
-      context: ./squad-b-vote-service
+      context: ./vote
     container_name: vote-service
     environment:
       DATABASE_URL: postgresql://voting:${POSTGRES_PASSWORD:-change-me}@postgres:5432/voting
@@ -24,7 +24,7 @@ services:
         condition: service_healthy
     expose:
       - "5000"
-    # Defined in squad-b-vote-service/Dockerfile: /health/ready, which is 503 until
+    # Defined in vote/Dockerfile: /health/ready, which is 503 until
     # Postgres answers. Restated here so `docker compose ps` shows it and so nginx
     # can wait on it below.
     healthcheck:
@@ -39,7 +39,7 @@ services:
 
   worker:
     build:
-      context: ./squad-c-worker-data
+      context: ./worker
     container_name: worker
     environment:
       POSTGRES_HOST: postgres
@@ -101,12 +101,14 @@ services:
       vote-service:
         condition: service_healthy
     restart: unless-stopped
+    # Host ports are overridable so the stack can come up on a machine that already
+    # runs something on 80 (Apache, another project). Defaults are unchanged.
     ports:
-      - "80:80"
-      - "443:443"
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
     volumes:
-      - ./squad-d-devops/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./squad-d-devops/nginx/certs:/etc/nginx/certs:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
     networks:
       - app-network
 

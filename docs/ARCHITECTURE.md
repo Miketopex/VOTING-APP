@@ -38,12 +38,12 @@ It also provides `/nginx-health`, structured JSON access logs, forwarded client 
 ### Vote Service
 The Flask/Gunicorn service is the main voting application and API. It handles authentication, polls, voting operations, database access, Redis access, and application health checks.
 
-Source: `squad-b-vote-service/`
+Source: `vote/`
 
 ### Worker
 The Node.js worker handles background processing and communicates with Redis and PostgreSQL.
 
-Source: `squad-c-worker-data/`
+Source: `worker/`
 
 ### PostgreSQL
 PostgreSQL provides persistent relational storage and uses the `postgres-data` Docker volume.
@@ -93,11 +93,17 @@ Worker:
 
 ## 7. Squad Responsibilities
 
-- **Squad A — Infrastructure:** AWS infrastructure in `squad-a-infra/`.
-- **Squad B — Vote Service:** Flask application and tests in `squad-b-vote-service/`.
-- **Squad C — Worker & Data:** Node.js worker in `squad-c-worker-data/`.
-- **Squad D — DevOps:** Deployment and Nginx configuration in `squad-d-devops/`.
-- **Squad E — QA, Monitoring & Documentation:** QA, monitoring, architecture, security/compliance, and final documentation in `squad-e-qa-monitoring/`.
+- **Squad A — Infrastructure:** AWS infrastructure in `infra/terraform/`.
+- **Squad B — Vote Service:** Flask application and tests in `vote/`.
+- **Squad C — Worker & Data:** Node.js worker in `worker/`.
+- **Squad D — DevOps:** Deployment in `scripts/`, Nginx in `nginx/`, Compose and CI/CD at the root and in `.github/workflows/`.
+- **Squad E — QA, Monitoring & Documentation:** End-to-end test and monitoring probe in `qa/`, documentation in `docs/`.
+
+Directories are named after what they run rather than after the squad that wrote them,
+because the tooling reads these paths: Compose builds from `vote/` and `worker/`, CI
+sets its working directory to them, and Terraform requires its `.tf` files in one
+directory. Ownership is recorded in `.github/CODEOWNERS`, which GitHub enforces by
+requesting the right squad as reviewer on every pull request.
 
 ## 8. Documentation Maintenance
 
@@ -108,11 +114,12 @@ The contributor making a structural change should notify the documentation owner
 ## 9. Sources of Truth
 
 Use these repository files when reviewing the architecture:
-- `docker-compose.yml`
-- `squad-d-devops/nginx/nginx.conf`
-- `squad-a-infra/`
-- `squad-b-vote-service/`
-- `squad-c-worker-data/`
+- `docker-compose.yml` and `docker-compose.prod.yml`
+- `nginx/nginx.conf`
+- `qa/e2e.sh` — the executable description of how the services fit together
+- `infra/terraform/`
+- `vote/`
+- `worker/`
 - `.github/workflows/`
 
 Documentation should describe the implementation that currently exists in the repository, not planned features.

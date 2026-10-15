@@ -29,35 +29,43 @@ jobs:
       - name: Build and push vote image
         uses: docker/build-push-action@v6
         with:
-          context: squad-b-vote-service
+          context: vote
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/cloudvote-vote:${{ env.TAG }}
 
       - name: Build and push worker image
         uses: docker/build-push-action@v6
         with:
-          context: squad-c-worker-data
+          context: worker
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/cloudvote-worker:${{ env.TAG }}
 
       - name: Set up SSH
         env:
+          # Was `${{ secrets.SSH_KEY }}` in the run block while the env var above read
+          # EC2_SSH_KEY. There is no secret called SSH_KEY, so this wrote an empty file
+          # and every deploy would have failed at the first ssh.
           SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
         run: |
           install -m 700 -d ~/.ssh
-          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_ed25519
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> ~/.ssh/known_hosts
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
 
-      - name: Copy compose file and scripts to EC2
+      - name: Copy compose files, scripts and nginx config to EC2
         run: |
-          ssh "$EC2_USER@$EC2_HOST" "mkdir -p /opt/cloudvote/squad-d-devops/nginx"
+          ssh "$EC2_USER@$EC2_HOST" "mkdir -p /opt/cloudvote/nginx"
+          # docker-compose.prod.yml is what turns the two `build:` services into the
+          # images pushed above. Without it the server has nothing to run.
           scp docker-compose.yml \
-              squad-d-devops/scripts/deploy.sh \
-              squad-d-devops/scripts/fetch-env.sh \
+              docker-compose.prod.yml \
+              scripts/deploy.sh \
+              scripts/fetch-env.sh \
+              scripts/backup-db.sh \
+              scripts/restore-db.sh \
               "$EC2_USER@$EC2_HOST":/opt/cloudvote/
-          scp -r squad-d-devops/nginx/. \
-              "$EC2_USER@$EC2_HOST":/opt/cloudvote/squad-d-devops/nginx/
+          scp -r nginx/. \
+              "$EC2_USER@$EC2_HOST":/opt/cloudvote/nginx/
 
       - name: Deploy (health check and rollback are inside deploy.sh)
         run: |

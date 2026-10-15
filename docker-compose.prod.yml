@@ -1,0 +1,64 @@
+# Production overlay. Use it together with the base file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# The base file BUILDS from ./vote and ./worker, which is right for a laptop and
+# impossible on the server: CD copies the compose files, the scripts and nginx to
+# EC2, never the source. This overlay replaces those builds with the images CD
+# pushed to Docker Hub, tagged with the commit SHA.
+#
+# That is also what makes rollback real. deploy.sh keeps the last good tag in
+# .deployed_tag and re-runs with IMAGE_TAG set to it; without an `image:` key here
+# there is nothing for that variable to change.
+#
+# ---------------------------------------------------------------------------
+#  Centralised logs
+#
+#  The brief asks for centralised application logs. iam.tf already granted
+#  logs:CreateLogGroup / CreateLogStream / PutLogEvents on /cloudvote/*, and a comment
+#  there even said "Docker awslogs driver" - but nothing ever used that driver, so
+#  every container's logs stayed on the instance and would die with it. The permission
+#  was real; the wiring was not.
+#
+#  Only this overlay sets it. On a laptop there are no AWS credentials and the awslogs
+#  driver refuses to start the container, which is why it is not in the base file.
+#
+#  AWS_REGION comes from .env, which fetch-env.sh writes from SSM.
+#
+#  Read them with:
+#    aws logs tail /cloudvote/prod --follow
+#    aws logs tail /cloudvote/prod --log-stream-names nginx --follow
+# ---------------------------------------------------------------------------
+services:
+  vote-service:
+    build: !reset null
+    image: ${DOCKERHUB_USER:?DOCKERHUB_USER is required}/cloudvote-vote:${IMAGE_TAG:?IMAGE_TAG is required}
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION:-us-east-1}
+        awslogs-group: /cloudvote/prod
+        awslogs-create-group: "true"
+        awslogs-stream: vote-service
+
+  worker:
+    build: !reset null
+    image: ${DOCKERHUB_USER:?DOCKERHUB_USER is required}/cloudvote-worker:${IMAGE_TAG:?IMAGE_TAG is required}
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION:-us-east-1}
+        awslogs-group: /cloudvote/prod
+        awslogs-create-group: "true"
+        awslogs-stream: worker
+
+  # nginx writes one JSON object per request (log_format json in nginx.conf), so this
+  # stream is the access log: status, path, duration and upstream for every request.
+  nginx:
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION:-us-east-1}
+        awslogs-group: /cloudvote/prod
+        awslogs-create-group: "true"
+        awslogs-stream: nginx
