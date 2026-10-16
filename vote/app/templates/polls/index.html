@@ -6,7 +6,7 @@
     <h1>Polls</h1>
     <p class="muted">You can vote once in each open poll.</p>
   </div>
-  {% if g.user.is_admin %}<a class="btn btn-primary" href="{{ url_for('admin.new_poll') }}">+ New poll</a>{% endif %}
+  {% if g.user.is_admin %}<a class="btn btn-primary" href="{{ url_for('admin.create_poll') }}">+ New poll</a>{% endif %}
 </div>
 {% if polls %}
 <div class="poll-list">
