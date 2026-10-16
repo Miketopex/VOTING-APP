@@ -205,3 +205,102 @@ h3 { font-size: .95rem; margin: 1.25rem 0 .5rem; }
   .health-grid, .grid-3 { grid-template-columns: 1fr 1fr; }
   .poll-card { flex-direction: column; align-items: flex-start; }
 }
+
+/* ---------------------------------------------------------------------------
+   Admin dashboard.
+
+   The template already used .panel, .stat-row, .stat-value and .stat-label, but
+   none of them had any CSS, so the page rendered as raw bullet lists while the
+   rest of the app looked finished. These rules use the same tokens, radius and
+   shadow as .poll-card so the admin screen matches everything else.
+   --------------------------------------------------------------------------- */
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 22px 24px;
+  margin-bottom: 20px;
+}
+.panel > h2 {
+  margin: 0 0 16px;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+
+/* Stats as a row of tiles rather than a bullet list. auto-fit keeps them even
+   at any count, so the 5-tile pipeline and the 4-tile turnout row both work. */
+.stat-row {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 14px;
+}
+.stat-row li {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 18px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.stat-row .stat-value { line-height: 1.1; color: var(--text); }
+.stat-row .stat-label {
+  font-size: .72rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* The new-poll form. fieldset and legend were completely unstyled, which is
+   what produced the raw browser border around the option inputs. */
+.panel form label {
+  display: block;
+  font-size: .8rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.panel fieldset {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px 18px 18px;
+  margin: 18px 0;
+}
+.panel fieldset legend {
+  padding: 0 8px;
+  font-size: .8rem;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.panel fieldset input { margin-bottom: 10px; }
+.panel fieldset input:last-of-type { margin-bottom: 0; }
+
+@media (min-width: 640px) {
+  .panel fieldset {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 14px;
+  }
+  .panel fieldset legend { grid-column: 1 / -1; }
+  .panel fieldset input,
+  .panel fieldset input:last-of-type { margin-bottom: 0; }
+}
+
+@media (max-width: 640px) {
+  .panel { padding: 18px 16px; }
+  .stat-row { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+  .stat-row li { padding: 14px; }
+}
